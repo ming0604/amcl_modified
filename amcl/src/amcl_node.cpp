@@ -181,6 +181,10 @@ class AmclNode
     void updatePoseFromServer();
     void applyInitialPose();
 
+    //insert PLICP particle callback
+    void PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg);
+    ros::Subscriber PLICP_sub;
+
     //parameter for which odom to use
     std::string odom_frame_id_;
 
@@ -512,6 +516,8 @@ AmclNode::AmclNode() :
 
   diagnosic_updater_.setHardwareID("None");
   diagnosic_updater_.add("Standard deviation", this, &AmclNode::standardDeviationDiagnostics);
+
+  PLICP_sub = nh_.subscribe("/PLICP_pose", 2 , &AmclNode::PLICP_pose_received, this);
 }
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
@@ -1654,4 +1660,46 @@ AmclNode::standardDeviationDiagnostics(diagnostic_updater::DiagnosticStatusWrapp
   {
     diagnostic_status.summary(diagnostic_msgs::DiagnosticStatus::OK, "OK");
   }
+}
+
+
+void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg)
+{ /*
+  double PLICP_x, PLICP_y, PLICP_yaw;
+  PLICP_x = msg->pose.position.x;
+  PLICP_y = msg->pose.position.y;
+
+  tf2::Quaternion q;
+  tf2::fromMsg(msg->pose.orientation, q);
+  PLICP_yaw = tf2::getYaw(q);
+
+  //find current particle set address
+  pf_sample_set_t *set;
+  set = set = pf_->sets + pf_->current_set;
+
+  
+  while(set->sample_count < pf_->max_samples)
+  {
+    //add new sample at last
+    pf_sample_t *sample;
+    sample = set->samples + set->sample_count;
+    sample->pose.v[0] = PLICP_x;
+    sample->pose.v[1] = PLICP_y;
+    sample->pose.v[2] = PLICP_yaw;
+    sample->weight = 1.0;
+    set->sample_count++;
+  }
+ 
+  //add new sample at last
+  if(set->sample_count < pf_->max_samples)
+  {
+    pf_sample_t *sample;
+    sample = set->samples + set->sample_count;
+    sample->pose.v[0] = PLICP_x;
+    sample->pose.v[1] = PLICP_y;
+    sample->pose.v[2] = PLICP_yaw;
+    sample->weight = 1.0;
+    set->sample_count++;
+  }
+   */
 }
