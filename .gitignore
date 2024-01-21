@@ -1,4 +1,5 @@
 *~
 *.project
 *.cproject
-
+/amcl/amcl_data/maps
+/amcl/amcl_data/*bag

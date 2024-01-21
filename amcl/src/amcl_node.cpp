@@ -1500,7 +1500,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     }
   }
   else if(latest_tf_valid_)
-  {
+  { 
+    /*
     if (tf_broadcast_ == true)
     {
       // Nothing changed, so we'll just republish the last transform, to keep
@@ -1514,7 +1515,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       tf2::convert(latest_tf_.inverse(), tmp_tf_stamped.transform);
       this->tfb_->sendTransform(tmp_tf_stamped);
     }
-
+    */
     // Is it time to save our last pose to the param server
     ros::Time now = ros::Time::now();
     if((save_pose_period.toSec() > 0.0) &&
