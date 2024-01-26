@@ -129,6 +129,7 @@ std::string stripSlash(const std::string& in)
   return out;
 }
 
+bool compare_samples(const pf_sample_t& a, const pf_sample_t& b);
 class AmclNode
 {
   public:
@@ -1662,22 +1663,28 @@ AmclNode::standardDeviationDiagnostics(diagnostic_updater::DiagnosticStatusWrapp
   }
 }
 
+bool compare_samples(const pf_sample_t& a, const pf_sample_t& b) 
+{
+  //ascending samples
+  return a.weight < b.weight; 
+}
 
 void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg)
-{ /*
+{ 
+  
   double PLICP_x, PLICP_y, PLICP_yaw;
   PLICP_x = msg->pose.position.x;
   PLICP_y = msg->pose.position.y;
 
-  tf2::Quaternion q;
-  tf2::fromMsg(msg->pose.orientation, q);
-  PLICP_yaw = tf2::getYaw(q);
+  tf2::Quaternion qu;
+  tf2::fromMsg(msg->pose.orientation, qu);
+  PLICP_yaw = tf2::getYaw(qu);
 
   //find current particle set address
   pf_sample_set_t *set;
-  set = set = pf_->sets + pf_->current_set;
-
-  
+  set = pf_->sets + pf_->current_set;
+  /*
+  //fill new pose until set full
   while(set->sample_count < pf_->max_samples)
   {
     //add new sample at last
@@ -1690,8 +1697,23 @@ void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg
     set->sample_count++;
   }
  
-  //add new sample at last
-  if(set->sample_count < pf_->max_samples)
+  //insert a new sample at last (soft-1)
+  if(set->sample_count == pf_->max_samples)
+  {
+    //ascending sort samples
+    std::sort(set->samples, set->samples + set->sample_count, compare_samples);
+
+    //replace 1 particles with new pose samples
+    for(int i = 0; i < 1; i++)
+    {
+      pf_sample_t* sample = set->samples + i;
+      sample->pose.v[0] = PLICP_x;
+      sample->pose.v[1] = PLICP_y;
+      sample->pose.v[2] = PLICP_yaw;
+      sample->weight = 1.0;
+    }
+  }
+  else
   {
     pf_sample_t *sample;
     sample = set->samples + set->sample_count;
@@ -1701,5 +1723,75 @@ void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg
     sample->weight = 1.0;
     set->sample_count++;
   }
-   */
+  */
+
+  //insert a fix proportion particle (soft-p)
+  double q = 0.5;
+  int count = 0;
+  int original_N;
+  original_N = set->sample_count;
+
+  if(original_N <= (1-q)*(pf_->max_samples))
+  {
+    //insert q*original_N/(1-q) particles
+    while(count < q*original_N/(1-q))
+    {
+      //add new sample at last
+      pf_sample_t *sample;
+      sample = set->samples + set->sample_count;
+      sample->pose.v[0] = PLICP_x;
+      sample->pose.v[1] = PLICP_y;
+      sample->pose.v[2] = PLICP_yaw;
+      sample->weight = 1.0;
+      set->sample_count++;
+      count++;
+    }
+  }
+
+  else if(original_N == pf_->max_samples)
+  { 
+    //ascending sort samples
+    std::sort(set->samples, set->samples + set->sample_count, compare_samples);
+
+    //replace q*Nmax particles with new pose samples
+    for(int i = 0; i < q*(pf_->max_samples); i++)
+    {
+      pf_sample_t* sample = set->samples + i;
+      sample->pose.v[0] = PLICP_x;
+      sample->pose.v[1] = PLICP_y;
+      sample->pose.v[2] = PLICP_yaw;
+      sample->weight = 1.0;
+    }
+  }
+
+  else
+  {
+    //ascending sort samples
+    std::sort(set->samples, set->samples + set->sample_count, compare_samples);
+
+    //replace original_N-(1-q)*Nmax particles with new pose samples
+    for(int i = 0; i < (original_N-(1-q)*(pf_->max_samples)); i++)
+    {
+      pf_sample_t* sample = set->samples + i;
+      sample->pose.v[0] = PLICP_x;
+      sample->pose.v[1] = PLICP_y;
+      sample->pose.v[2] = PLICP_yaw;
+      sample->weight = 1.0;
+      count++;
+    }
+
+    //insert q*Nmax new pose samples 
+    while(count < q*(pf_->max_samples))
+    {
+      //add new sample at last
+      pf_sample_t *sample;
+      sample = set->samples + set->sample_count;
+      sample->pose.v[0] = PLICP_x;
+      sample->pose.v[1] = PLICP_y;
+      sample->pose.v[2] = PLICP_yaw;
+      sample->weight = 1.0;
+      set->sample_count++;
+      count++;
+    }
+  }
 }
