@@ -185,6 +185,8 @@ class AmclNode
     //insert PLICP particle callback
     void PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg);
     ros::Subscriber PLICP_sub;
+    //publish scan which is used by AMCL
+    ros::Publisher amcl_scan_pub;
 
     //parameter for which odom to use
     std::string odom_frame_id_;
@@ -519,6 +521,7 @@ AmclNode::AmclNode() :
   diagnosic_updater_.add("Standard deviation", this, &AmclNode::standardDeviationDiagnostics);
 
   PLICP_sub = nh_.subscribe("/PLICP_pose", 2 , &AmclNode::PLICP_pose_received, this);
+  amcl_scan_pub = nh_.advertise<sensor_msgs::LaserScan>("/amcl_scan", 1);
 }
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
@@ -1134,7 +1137,8 @@ AmclNode::setMapCallback(nav_msgs::SetMap::Request& req,
 
 void
 AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
-{
+{ 
+  
   std::string laser_scan_frame_id = stripSlash(laser_scan->header.frame_id);
   last_laser_received_ts_ = ros::Time::now();
   if( map_ == NULL ) {
@@ -1371,7 +1375,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
   }
 
   if(resampled || force_publication)
-  {
+  { 
+    sensor_msgs::LaserScan amcl_scan_used = *laser_scan;
+    amcl_scan_pub.publish(amcl_scan_used);
     // Read out the current hypotheses
     double max_weight = 0.0;
     int max_weight_hyp = -1;
@@ -1723,8 +1729,8 @@ void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg
     sample->weight = 1.0;
     set->sample_count++;
   }
-  */
-
+  
+  
   //insert a fix proportion particle (soft-p)
   double q = 0.5;
   int count = 0;
@@ -1793,5 +1799,7 @@ void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg
       set->sample_count++;
       count++;
     }
+    
   }
+  */
 }
