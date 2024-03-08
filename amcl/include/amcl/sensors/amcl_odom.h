@@ -90,6 +90,9 @@ class AMCLOdom : public AMCLSensor
 
   // Drift parameters
   private: double alpha1, alpha2, alpha3, alpha4, alpha5;
+
+  //motion model odometry probability(only for diff)
+  public: double motion_model_odom_diff_probability(pf_vector_t pose, AMCLOdomData *data, pf_vector_t last_pose);
 };
 
 

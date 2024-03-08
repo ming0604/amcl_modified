@@ -104,7 +104,7 @@ class AMCLLaser : public AMCLSensor
   // Determine the probability for the given pose - more probablistic model 
   private: static double LikelihoodFieldModelProb(AMCLLaserData *data, 
 					     pf_sample_set_t* set);
-
+  public: static double LikelihoodFieldModel_one_pose(AMCLLaserData *data, pf_vector_t pose);
   private: void reallocTempData(int max_samples, int max_obs);
 
   private: laser_model_t model_type;

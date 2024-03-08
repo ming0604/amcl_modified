@@ -79,6 +79,15 @@
 #define NEW_UNIFORM_SAMPLING 1
 
 using namespace amcl;
+typedef struct
+{
+  pf_vector_t pose;
+  //measurement likelihood(probability)
+  double pz;
+  //predict probability
+  double pu;
+
+} ICP_poses;
 
 // Pose hypothesis
 typedef struct
@@ -231,6 +240,8 @@ class AmclNode
     double pf_err_, pf_z_;
     bool pf_init_;
     pf_vector_t pf_odom_pose_;
+    pf_vector_t last_odom_pose_at_pub;
+    pf_vector_t odom_at_pub_delta;
     double d_thresh_, a_thresh_;
     int resample_interval_;
     int resample_count_;
@@ -242,6 +253,8 @@ class AmclNode
 
     AMCLOdom* odom_;
     AMCLLaser* laser_;
+    AMCLLaserData ldata;
+    AMCLOdomData last_pub_odata;
 
     ros::Duration cloud_pub_interval;
     ros::Time last_cloud_pub_time;
@@ -309,6 +322,7 @@ class AmclNode
     ros::Duration laser_check_interval_;
     void checkLaserReceived(const ros::TimerEvent& event);
     void poseReceived(const ros::TimerEvent& event);
+    void sample_every_45_degree(std::vector<ICP_poses>& samples, const geometry_msgs::Pose& after_icp_pose, double radius);
 };
 
 #if NEW_UNIFORM_SAMPLING
@@ -1276,7 +1290,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
   {
     // Pose at last filter update
     pf_odom_pose_ = pose;
-
+    
     // Filter is now initialized
     pf_init_ = true;
 
@@ -1287,6 +1301,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     force_publication = true;
 
     resample_count_ = 0;
+
+    //record last odom pose at pub
+    last_odom_pose_at_pub = pose;
   }
   // If the robot has moved, update the filter
   else if(pf_init_ && lasers_update_[laser_index])
@@ -1312,7 +1329,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
   // If the robot has moved, update the filter
   if(lasers_update_[laser_index])
   {
-    AMCLLaserData ldata;
+    //AMCLLaserData ldata;         move to private variable
     ldata.sensor = lasers_[laser_index];
     ldata.range_count = laser_scan->ranges.size();
 
@@ -1423,6 +1440,19 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
   if(resampled || force_publication)
   { 
+    //for my use need odom change between now and last publish pose
+    odom_at_pub_delta = pf_vector_zero();
+    if(resampled)
+    { 
+      odom_at_pub_delta.v[0] = pose.v[0] - last_odom_pose_at_pub.v[0];
+      odom_at_pub_delta.v[1] = pose.v[1] - last_odom_pose_at_pub.v[1];
+      odom_at_pub_delta.v[2] = angle_diff(pose.v[2], last_odom_pose_at_pub.v[2]);
+
+      last_pub_odata.pose = pose;
+      last_pub_odata.delta = odom_at_pub_delta;
+    }
+    last_odom_pose_at_pub = pose;
+
     sensor_msgs::LaserScan amcl_scan_used = *laser_scan;
     amcl_scan_pub.publish(amcl_scan_used);
     // Read out the current hypotheses
@@ -1722,6 +1752,34 @@ bool compare_samples(const pf_sample_t& a, const pf_sample_t& b)
   return a.weight < b.weight; 
 }
 
+void AmclNode::sample_every_45_degree(std::vector<ICP_poses>& samples, const geometry_msgs::Pose& after_icp_pose, double radius)
+{ 
+  double angle_increment;
+  double yaw = tf2::getYaw(after_icp_pose.orientation);
+  
+  //angle_increment = 45 degrees (change to rad)
+  angle_increment = 45 * M_PI / 180;
+  for(float r=0.01; r<=radius; r+=0.01)
+  {
+    for(double angle=0.0; angle<2*M_PI; angle += angle_increment)
+    {
+        ICP_poses point;
+        //x coordinate
+        point.pose.v[0] = after_icp_pose.position.x + r*cos(angle);
+        //y coordinate
+        point.pose.v[1] = after_icp_pose.position.y + r*sin(angle);
+        //yaw as original pose
+        point.pose.v[2] = yaw;
+
+        point.pu = 0;
+        point.pz = 0;
+
+        //push into vector
+        samples.push_back(point);
+    }
+  }
+}
+
 void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg)
 { 
   ROS_WARN("PLICP pose received time: %f ", ros::Time::now().toSec());
@@ -1736,6 +1794,39 @@ void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg
   //find current particle set address
   pf_sample_set_t *set;
   set = pf_->sets + pf_->current_set;
+
+  
+  //use gmapping paper method sample around ICP result
+  if(not first pub)
+  {
+    std::vector<ICP_poses> samples_around_ICP;
+    double max_radius = 0.03;
+    geometry_msgs::Pose amcl_fuse_icp_pose;
+
+    //generate fused pose with x,y as amcl and yaw as ICP
+    amcl_fuse_icp_pose.position = last_published_pose.pose.pose.position;
+    amcl_fuse_icp_pose.orientation = msg->pose.orientation;
+    sample_every_45_degree(samples_around_ICP,amcl_fuse_icp_pose,max_radius);
+    //ROS_WARN("sample_every_45_degree count: %zu\n", samples_around_ICP.size());
+    //...
+    
+    //build the guassian
+    //AMCLLaser* last_l;
+    pf_vector_t mean = pf_vector_zero();
+    double ita = 0;
+
+    for(int i=0; i<samples_around_ICP.size(); i++)
+    {
+      samples_around_ICP[i].pz = AMCLLaser::LikelihoodFieldModel_one_pose(&ldata, samples_around_ICP[i].pose);
+      
+      ROS_INFO("pz %d: %f" , i,samples_around_ICP[i].pz);
+    }
+  }
+    
+  
+  
+
+
   /*
   //fill new pose until set full
   while(set->sample_count < pf_->max_samples)

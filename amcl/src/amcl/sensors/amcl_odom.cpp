@@ -56,6 +56,16 @@ angle_diff(double a, double b)
   else
     return(d2);
 }
+double normal_distribution_prob(double a, double mean, double var)
+{
+  double prob,std_dev,coef,exp_term;
+
+  std_dev = sqrt(var);
+  coef = 1.0 / (std_dev * sqrt(2 * M_PI));
+  exp_term = exp(-0.5 * pow((a - mean) / std_dev, 2));
+  prob = coef * exp_term;
+  return(prob);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Default constructor
@@ -307,4 +317,61 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
   break;
   }
   return true;
+}
+
+double AMCLOdom::motion_model_odom_diff_probability(pf_vector_t pose, AMCLOdomData *data, pf_vector_t last_pose)
+{
+  pf_vector_t old_pose = pf_vector_sub(data->pose, data->delta);
+  pf_vector_t delta_estimate_pose;
+
+  double delta_rot1, delta_trans, delta_rot2;
+  double delta_rot1_hat, delta_trans_hat, delta_rot2_hat;
+  double delta_rot1_hat_noise, delta_rot2_hat_noise;
+  double p1, p2, p3;
+  // delta for odom change
+  // Avoid computing a bearing from two poses that are extremely near each
+  // other (happens on in-place rotation).
+  if(sqrt(data->delta.v[1]*data->delta.v[1] + 
+          data->delta.v[0]*data->delta.v[0]) < 0.01)
+    delta_rot1 = 0.0;
+  else
+    delta_rot1 = angle_diff(atan2(data->delta.v[1], data->delta.v[0]),
+                            old_pose.v[2]);
+  delta_trans = sqrt(data->delta.v[0]*data->delta.v[0] +
+                      data->delta.v[1]*data->delta.v[1]);
+  delta_rot2 = angle_diff(data->delta.v[2], delta_rot1);
+
+  // delta_hat for estimate pose change(xt , xt-1)
+  delta_estimate_pose.v[0] = pose.v[0] - last_pose.v[0];
+  delta_estimate_pose.v[1] = pose.v[1] - last_pose.v[1];
+  delta_estimate_pose.v[2] = angle_diff(pose.v[2], last_pose.v[2]);
+
+  // Avoid computing a bearing from two poses that are extremely near each
+  // other (happens on in-place rotation).
+  if(sqrt(delta_estimate_pose.v[0]*delta_estimate_pose.v[0] + delta_estimate_pose.v[1]*delta_estimate_pose.v[1]) < 0.01)
+    delta_rot1_hat = 0.0;
+  else
+    delta_rot1_hat = angle_diff(atan2(delta_estimate_pose.v[1], delta_estimate_pose.v[0]),
+                            last_pose.v[2]);
+  delta_trans_hat = sqrt(delta_estimate_pose.v[0]*delta_estimate_pose.v[0] +
+                      delta_estimate_pose.v[1]*delta_estimate_pose.v[1]);
+  delta_rot2_hat = angle_diff(delta_estimate_pose.v[2], delta_rot1_hat);
+
+  // We want to treat backward and forward motion symmetrically for the
+  // noise model to be applied below.  The standard model seems to assume
+  // forward motion.
+  delta_rot1_hat_noise = std::min(fabs(angle_diff(delta_rot1_hat,0.0)),
+                              fabs(angle_diff(delta_rot1_hat,M_PI)));
+  delta_rot2_hat_noise = std::min(fabs(angle_diff(delta_rot2_hat,0.0)),
+                              fabs(angle_diff(delta_rot2_hat,M_PI)));
+
+  p1 = normal_distribution_prob(delta_rot1-delta_rot1_hat, 0, this->alpha1*delta_rot1_hat_noise*delta_rot1_hat_noise +
+                                                       this->alpha2*delta_trans_hat*delta_trans_hat);
+  p2 = normal_distribution_prob(delta_trans-delta_trans_hat, 0,  this->alpha3*delta_trans_hat*delta_trans_hat +
+                                   this->alpha4*delta_rot1_hat_noise*delta_rot1_hat_noise +
+                                   this->alpha4*delta_rot2_hat_noise*delta_rot2_hat_noise);
+  p3 = normal_distribution_prob(delta_rot2-delta_rot2_hat, 0,  this->alpha1*delta_rot2_hat_noise*delta_rot2_hat_noise +
+                                                       this->alpha2*delta_trans_hat*delta_trans_hat);
+
+  return p1*p2*p3;
 }
