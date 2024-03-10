@@ -552,7 +552,7 @@ double AMCLLaser::LikelihoodFieldModel_one_pose(AMCLLaserData *data, pf_vector_t
     else
       z = self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_dist;
     // Gaussian model
-    // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)  //why not inplement????
+    // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)  //why not inplement???? may because pdf can >1
     pz += self->z_hit * exp(-(z * z) / z_hit_denom);
     // Part 2: random measurements
     pz += self->z_rand * z_rand_mult;
@@ -584,4 +584,32 @@ void AMCLLaser::reallocTempData(int new_max_samples, int new_max_obs){
   for(int k=0; k < max_samples; k++){
     temp_obs[k] = new double[max_obs]();
   }
+}
+
+
+AMCLLaserData& AMCLLaserData::operator=(const AMCLLaserData& other)
+{
+  if(this != &other)//check if myself
+  {
+    if (ranges != NULL) 
+    {
+      delete[] ranges;
+      ranges = NULL;
+    }
+    // malloc memory for ranges
+    ranges = new double[other.range_count][2];
+    // copy data of ranges
+    for (int i = 0; i < other.range_count; i++) 
+    {
+      ranges[i][0] = other.ranges[i][0];
+      ranges[i][1] = other.ranges[i][1];
+    }
+
+    // copy range_max and range_max and sensor
+    range_count = other.range_count;
+    range_max = other.range_max;
+    sensor = other.sensor;
+    time = other.time;
+  }
+  return *this;
 }

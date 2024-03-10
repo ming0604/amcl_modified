@@ -52,6 +52,7 @@ class AMCLLaserData : public AMCLSensorData
   public: int range_count;
   public: double range_max;
   public: double (*ranges)[2];
+  public: AMCLLaserData& operator=(const AMCLLaserData& other);
 };
 
 

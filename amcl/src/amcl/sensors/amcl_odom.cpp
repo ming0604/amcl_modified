@@ -28,6 +28,7 @@
 ///////////////////////////////////////////////////////////////////////////
 
 #include <algorithm>
+#include <iostream>
 
 #include <sys/types.h> // required by Darwin
 #include <math.h>
@@ -64,6 +65,7 @@ double normal_distribution_prob(double a, double mean, double var)
   coef = 1.0 / (std_dev * sqrt(2 * M_PI));
   exp_term = exp(-0.5 * pow((a - mean) / std_dev, 2));
   prob = coef * exp_term;
+  //prob = exp_term;
   return(prob);
 }
 
@@ -360,11 +362,15 @@ double AMCLOdom::motion_model_odom_diff_probability(pf_vector_t pose, AMCLOdomDa
   // We want to treat backward and forward motion symmetrically for the
   // noise model to be applied below.  The standard model seems to assume
   // forward motion.
+  
   delta_rot1_hat_noise = std::min(fabs(angle_diff(delta_rot1_hat,0.0)),
                               fabs(angle_diff(delta_rot1_hat,M_PI)));
   delta_rot2_hat_noise = std::min(fabs(angle_diff(delta_rot2_hat,0.0)),
                               fabs(angle_diff(delta_rot2_hat,M_PI)));
-
+  /*
+  delta_rot1_hat_noise = delta_rot1_hat;
+  delta_rot2_hat_noise = delta_rot2_hat;
+  */
   p1 = normal_distribution_prob(delta_rot1-delta_rot1_hat, 0, this->alpha1*delta_rot1_hat_noise*delta_rot1_hat_noise +
                                                        this->alpha2*delta_trans_hat*delta_trans_hat);
   p2 = normal_distribution_prob(delta_trans-delta_trans_hat, 0,  this->alpha3*delta_trans_hat*delta_trans_hat +
@@ -372,6 +378,6 @@ double AMCLOdom::motion_model_odom_diff_probability(pf_vector_t pose, AMCLOdomDa
                                    this->alpha4*delta_rot2_hat_noise*delta_rot2_hat_noise);
   p3 = normal_distribution_prob(delta_rot2-delta_rot2_hat, 0,  this->alpha1*delta_rot2_hat_noise*delta_rot2_hat_noise +
                                                        this->alpha2*delta_trans_hat*delta_trans_hat);
-
+  //std::cout << p1 << " " << p2 << " " << p3 << std::endl;
   return p1*p2*p3;
 }

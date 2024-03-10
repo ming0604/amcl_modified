@@ -36,7 +36,7 @@
 #include "amcl/pf/pf.h"
 #include "amcl/sensors/amcl_odom.h"
 #include "amcl/sensors/amcl_laser.h"
-#include "portable_utils.hpp"
+//#include "portable_utils.hpp"
 
 #include "ros/assert.h"
 
@@ -51,6 +51,7 @@
 #include "geometry_msgs/PoseStamped.h"
 #include "nav_msgs/GetMap.h"
 #include "nav_msgs/SetMap.h"
+#include <nav_msgs/Path.h>
 #include "std_srvs/Empty.h"
 
 // For transform support
@@ -75,6 +76,9 @@
 
 // For monitoring the estimator
 #include <diagnostic_updater/diagnostic_updater.h>
+
+#include <Eigen/Dense>
+
 
 #define NEW_UNIFORM_SAMPLING 1
 
@@ -202,6 +206,10 @@ class AmclNode
     ros::Publisher amcl_scan_pub;
     //publish pose at 100HZ from tf tree
     ros::Publisher fixed_freq_pose_pub_;
+    //publish generated Guassian mean pose and path;
+    ros::Publisher mean_pose_pub;
+    ros::Publisher mean_path_pub;
+    nav_msgs::Path mean_path;
 
     //parameter for which odom to use
     std::string odom_frame_id_;
@@ -242,6 +250,7 @@ class AmclNode
     pf_vector_t pf_odom_pose_;
     pf_vector_t last_odom_pose_at_pub;
     pf_vector_t odom_at_pub_delta;
+    pf_vector_t amcl_last_pub_pose;
     double d_thresh_, a_thresh_;
     int resample_interval_;
     int resample_count_;
@@ -253,7 +262,7 @@ class AmclNode
 
     AMCLOdom* odom_;
     AMCLLaser* laser_;
-    AMCLLaserData ldata;
+    AMCLLaserData ldata_at_lastest_pub;
     AMCLOdomData last_pub_odata;
 
     ros::Duration cloud_pub_interval;
@@ -315,6 +324,8 @@ class AmclNode
     bool force_update_after_initialpose_;
     bool force_update_after_set_map_;
     bool selective_resampling_;
+
+    bool first_pub_pose;
 
     void reconfigureCB(amcl::AMCLConfig &config, uint32_t level);
 
@@ -387,7 +398,8 @@ AmclNode::AmclNode() :
 	      private_nh_("~"),
         initial_pose_hyp_(NULL),
         first_map_received_(false),
-        first_reconfigure_call_(true)
+        first_reconfigure_call_(true),
+        first_pub_pose(true)
 {
   boost::recursive_mutex::scoped_lock l(configuration_mutex_);
 
@@ -552,6 +564,8 @@ AmclNode::AmclNode() :
   //get PLICP pose
   PLICP_sub = nh_.subscribe("/PLICP_pose", 2 , &AmclNode::PLICP_pose_received, this);
   amcl_scan_pub = nh_.advertise<sensor_msgs::LaserScan>("/amcl_scan", 1);
+  mean_pose_pub = nh_.advertise<geometry_msgs::PoseStamped>("/mean_pose", 2);
+  mean_path_pub = nh_.advertise<nav_msgs::Path>("/mean_path", 2);
 }
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
@@ -1278,7 +1292,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                   fabs(delta.v[2]) > a_thresh_;
     update = update || m_force_update;
     m_force_update=false;
-
+    //for my code know that is not first published pose when get ICP result
+    first_pub_pose=false;
     // Set the laser update flags
     if(update)
       for(unsigned int i=0; i < lasers_update_.size(); i++)
@@ -1329,7 +1344,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
   // If the robot has moved, update the filter
   if(lasers_update_[laser_index])
   {
-    //AMCLLaserData ldata;         move to private variable
+    AMCLLaserData ldata;         
     ldata.sensor = lasers_[laser_index];
     ldata.range_count = laser_scan->ranges.size();
 
@@ -1412,6 +1427,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     {
       pf_update_resample(pf_);
       resampled = true;
+      //copy the ldata if resampled(pose would be published)
+      ldata_at_lastest_pub = ldata;
     }
 
     pf_sample_set_t* set = pf_->sets + pf_->current_set;
@@ -1450,9 +1467,13 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
       last_pub_odata.pose = pose;
       last_pub_odata.delta = odom_at_pub_delta;
+      //store amcl pose at t-1
+      amcl_last_pub_pose.v[0] = last_published_pose.pose.pose.position.x;
+      amcl_last_pub_pose.v[1] = last_published_pose.pose.pose.position.y;
+      amcl_last_pub_pose.v[2] = tf2::getYaw(last_published_pose.pose.pose.orientation);
     }
     last_odom_pose_at_pub = pose;
-
+    
     sensor_msgs::LaserScan amcl_scan_used = *laser_scan;
     amcl_scan_pub.publish(amcl_scan_used);
     // Read out the current hypotheses
@@ -1797,31 +1818,61 @@ void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg
 
   
   //use gmapping paper method sample around ICP result
-  if(not first pub)
+  if(!first_pub_pose)
   {
     std::vector<ICP_poses> samples_around_ICP;
     double max_radius = 0.03;
     geometry_msgs::Pose amcl_fuse_icp_pose;
-
+    
     //generate fused pose with x,y as amcl and yaw as ICP
     amcl_fuse_icp_pose.position = last_published_pose.pose.pose.position;
     amcl_fuse_icp_pose.orientation = msg->pose.orientation;
     sample_every_45_degree(samples_around_ICP,amcl_fuse_icp_pose,max_radius);
     //ROS_WARN("sample_every_45_degree count: %zu\n", samples_around_ICP.size());
-    //...
-    
-    //build the guassian
-    //AMCLLaser* last_l;
-    pf_vector_t mean = pf_vector_zero();
-    double ita = 0;
+  
 
+    //build the guassian
+    //pf_vector_t mean = pf_vector_zero();
+    double ita = 0;
+    Eigen::Vector3d mean(0.0, 0.0, 0.0);
+    
     for(int i=0; i<samples_around_ICP.size(); i++)
     {
-      samples_around_ICP[i].pz = AMCLLaser::LikelihoodFieldModel_one_pose(&ldata, samples_around_ICP[i].pose);
-      
+      samples_around_ICP[i].pz = AMCLLaser::LikelihoodFieldModel_one_pose(&ldata_at_lastest_pub, samples_around_ICP[i].pose);
+      samples_around_ICP[i].pu = odom_->motion_model_odom_diff_probability(samples_around_ICP[i].pose, &last_pub_odata, amcl_last_pub_pose);
       ROS_INFO("pz %d: %f" , i,samples_around_ICP[i].pz);
+      ROS_INFO("pu %d: %f" , i,samples_around_ICP[i].pu);
+      
+      //count mean
+      Eigen::Vector3d point(samples_around_ICP[i].pose.v[0], samples_around_ICP[i].pose.v[1], samples_around_ICP[i].pose.v[2]);
+      mean +=  samples_around_ICP[i].pz * samples_around_ICP[i].pu * point;
+      ita += samples_around_ICP[i].pz * samples_around_ICP[i].pu;
     }
-  }
+    
+    mean /= ita;
+    double pose_prob;
+    double sum=0;
+    for(int i=0; i<samples_around_ICP.size(); i++)
+    {
+      pose_prob = (samples_around_ICP[i].pz * samples_around_ICP[i].pu) / ita;
+      ROS_INFO("p_normalized %d: %f" , i,pose_prob);
+    }
+    geometry_msgs::PoseStamped mean_pose;
+    mean_pose.header.frame_id = global_frame_id_;
+    mean_pose.header.stamp = msg->header.stamp;
+    mean_pose.pose.position.x = mean(0);
+    mean_pose.pose.position.y = mean(1);
+    tf2::Quaternion q;
+    q.setRPY(0, 0, mean(2));
+    tf2::convert(q, mean_pose.pose.orientation);
+    mean_pose_pub.publish(mean_pose);
+
+    //publish mean path
+    mean_path.header.frame_id = global_frame_id_;
+    mean_path.header.stamp = msg->header.stamp;
+    mean_path.poses.push_back(mean_pose);
+    mean_path_pub.publish(mean_path);
+}
     
   
   
