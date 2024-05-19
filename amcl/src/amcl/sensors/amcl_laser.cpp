@@ -36,6 +36,7 @@
 #endif
 
 #include "amcl/sensors/amcl_laser.h"
+#include <ros/ros.h>
 
 using namespace amcl;
 
@@ -503,12 +504,12 @@ double AMCLLaser::LikelihoodFieldModel_one_pose(AMCLLaserData *data, pf_vector_t
   pf_vector_t hit;
 
   self = (AMCLLaser*) data->sensor;
-
+  //std::cout << "pz region 1 passed" << std::endl;
   // Compute the sample weights
 
   // Take account of the laser pose relative to the robot
   pose = pf_vector_coord_add(self->laser_pose, pose);
-
+  //std::cout << "pz region2 passed" << std::endl;
   p = 1.0;
 
   // Pre-compute a couple of things
@@ -539,7 +540,7 @@ double AMCLLaser::LikelihoodFieldModel_one_pose(AMCLLaserData *data, pf_vector_t
     // Compute the endpoint of the beam
     hit.v[0] = pose.v[0] + obs_range * cos(pose.v[2] + obs_bearing);
     hit.v[1] = pose.v[1] + obs_range * sin(pose.v[2] + obs_bearing);
-
+    //std::cout << "pz region3 passed" << std::endl;
     // Convert to map grid coords.
     int mi, mj;
     mi = MAP_GXWX(self->map, hit.v[0]);
@@ -551,6 +552,8 @@ double AMCLLaser::LikelihoodFieldModel_one_pose(AMCLLaserData *data, pf_vector_t
       z = self->map->max_occ_dist;
     else
       z = self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_dist;
+
+    //std::cout << "pz region4 passed" << std::endl;
     // Gaussian model
     // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)  //why not inplement???? may because pdf can >1
     pz += self->z_hit * exp(-(z * z) / z_hit_denom);
