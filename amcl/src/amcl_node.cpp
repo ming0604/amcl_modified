@@ -1821,7 +1821,7 @@ void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg
   pf_sample_set_t *set;
   set = pf_->sets + pf_->current_set;
 
-   /**/
+   /*
   //use gmapping paper method sample around ICP result
   if(!first_pub_pose)
   { 
@@ -1886,7 +1886,7 @@ void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg
     
   }
   
-  
+  */
   
 
 
