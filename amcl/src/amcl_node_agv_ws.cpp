@@ -924,30 +924,61 @@ AmclNode::poseReceived(const ros::TimerEvent& event)
   // ROS_INFO("FFP");
   ffp.header.frame_id = "map";
   ffp.header.stamp = ros::Time::now(); 
+
+  try{
+    transformStamped = tfBuffer->lookupTransform("map","base_link",ros::Time(0));
+    ffp.pose.pose.position.x = transformStamped.transform.translation.x;
+    ffp.pose.pose.position.y = transformStamped.transform.translation.y;
+    ffp.pose.pose.orientation = transformStamped.transform.rotation;
+
+    P(semidros);
+    // amclPtr =shmPtr_ros;
+    shmPtrros[0] = ffp.header.stamp.toNSec();
+    shmPtrros[1] = ffp.pose.pose.position.x;
+    shmPtrros[2] = ffp.pose.pose.position.y;
+    shmPtrros[3] = tf2::getYaw(ffp.pose.pose.orientation);
+    // shmPtrros[4] = (ffp.pose.pose.position.x - lp.pose.pose.position.x)/0.01;
+    // shmPtrros[5] = 0;
+    // shmPtrros[6] = 0;
+    shmPtrros[7] = imu_.v[1];
+    V(semidros);
+
+    // ffp.pose.covariance[0] = 0.025;
+    // ffp.pose.covariance[6] = 0.025;
+    // ffp.pose.covariance[35] = 0.001;
+
+    fixed_freq_pose_pub_.publish(ffp);
+    lp.pose.pose.position.x = ffp.pose.pose.position.x;
+    lp.pose.pose.position.y = ffp.pose.pose.position.y;
+  }
+  catch(tf2::TransformException &ex){
+    ROS_ERROR("%s",ex.what());
+    ros::Duration(1.0).sleep();
+  }
   
-  ffp.pose.pose.position.x = transformStamped.transform.translation.x;
-  ffp.pose.pose.position.y = transformStamped.transform.translation.y;
-  ffp.pose.pose.orientation = transformStamped.transform.rotation;
+  // ffp.pose.pose.position.x = transformStamped.transform.translation.x;
+  // ffp.pose.pose.position.y = transformStamped.transform.translation.y;
+  // ffp.pose.pose.orientation = transformStamped.transform.rotation;
 
-  P(semidros);
-  // amclPtr =shmPtr_ros;
-  shmPtrros[0] = ffp.header.stamp.toNSec();
-  shmPtrros[1] = ffp.pose.pose.position.x;
-  shmPtrros[2] = ffp.pose.pose.position.y;
-  shmPtrros[3] = tf2::getYaw(ffp.pose.pose.orientation);
-  // shmPtrros[4] = (ffp.pose.pose.position.x - lp.pose.pose.position.x)/0.01;
-  // shmPtrros[5] = 0;
-  // shmPtrros[6] = 0;
-  shmPtrros[7] = imu_.v[1];
-  V(semidros);
+  // P(semidros);
+  // // amclPtr =shmPtr_ros;
+  // shmPtrros[0] = ffp.header.stamp.toNSec();
+  // shmPtrros[1] = ffp.pose.pose.position.x;
+  // shmPtrros[2] = ffp.pose.pose.position.y;
+  // shmPtrros[3] = tf2::getYaw(ffp.pose.pose.orientation);
+  // // shmPtrros[4] = (ffp.pose.pose.position.x - lp.pose.pose.position.x)/0.01;
+  // // shmPtrros[5] = 0;
+  // // shmPtrros[6] = 0;
+  // shmPtrros[7] = imu_.v[1];
+  // V(semidros);
 
-  // ffp.pose.covariance[0] = 0.025;
-  // ffp.pose.covariance[6] = 0.025;
-  // ffp.pose.covariance[35] = 0.001;
+  // // ffp.pose.covariance[0] = 0.025;
+  // // ffp.pose.covariance[6] = 0.025;
+  // // ffp.pose.covariance[35] = 0.001;
 
-  fixed_freq_pose_pub_.publish(ffp);
-  lp.pose.pose.position.x = ffp.pose.pose.position.x;
-  lp.pose.pose.position.y = ffp.pose.pose.position.y;
+  // fixed_freq_pose_pub_.publish(ffp);
+  // lp.pose.pose.position.x = ffp.pose.pose.position.x;
+  // lp.pose.pose.position.y = ffp.pose.pose.position.y;
 }
 
 void
@@ -1319,13 +1350,13 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     return;
   }
   
-  try{
-    transformStamped = tfBuffer->lookupTransform("map","base_link",ros::Time(0));
-  }
-  catch(tf2::TransformException &ex){
-    ROS_ERROR("%s",ex.what());
-    ros::Duration(1.0).sleep();
-  }
+  // try{
+  //   transformStamped = tfBuffer->lookupTransform("map","base_link",ros::Time(0));
+  // }
+  // catch(tf2::TransformException &ex){
+  //   ROS_ERROR("%s",ex.what());
+  //   ros::Duration(1.0).sleep();
+  // }
 
   ROS_INFO(" amcl_pose: %.6f %.6f",
          transformStamped.transform.translation.x,transformStamped.transform.translation.y);
