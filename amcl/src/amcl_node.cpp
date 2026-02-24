@@ -205,7 +205,7 @@ class AmclNode
     //publish scan which is used by AMCL
     ros::Publisher amcl_scan_pub;
     //publish pose at 100HZ from tf tree
-    ros::Publisher fixed_freq_pose_pub_;
+    // ros::Publisher fixed_freq_pose_pub_;
     //publish generated Guassian mean pose and path;
     // ros::Publisher mean_pose_pub;
     // ros::Publisher mean_path_pub;
@@ -216,7 +216,7 @@ class AmclNode
 
     //paramater to store latest odom pose
     geometry_msgs::PoseStamped latest_odom_pose_;
-    geometry_msgs::PoseWithCovarianceStamped lp;
+    // geometry_msgs::PoseWithCovarianceStamped lp;
 
     //parameter for which base to use
     std::string base_frame_id_;
@@ -306,7 +306,7 @@ class AmclNode
     dynamic_reconfigure::Server<amcl::AMCLConfig> *dsrv_;
     amcl::AMCLConfig default_config_;
     ros::Timer check_laser_timer_;
-    ros::Timer pose_timer_;
+    // ros::Timer pose_timer_;
 
     int max_beams_, min_particles_, max_particles_;
     double alpha1_, alpha2_, alpha3_, alpha4_, alpha5_;
@@ -332,7 +332,7 @@ class AmclNode
     ros::Time last_laser_received_ts_;
     ros::Duration laser_check_interval_;
     void checkLaserReceived(const ros::TimerEvent& event);
-    void poseReceived(const ros::TimerEvent& event);
+    // void poseReceived(const ros::TimerEvent& event);
     void sample_every_45_degree(std::vector<ICP_poses>& samples, const geometry_msgs::Pose& after_icp_pose, double radius);
 };
 
@@ -559,8 +559,8 @@ AmclNode::AmclNode() :
   diagnosic_updater_.add("Standard deviation", this, &AmclNode::standardDeviationDiagnostics);
 
   //timer for 100HZ take pose from tf tree
-  fixed_freq_pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("freq_pose", 2, true);
-  pose_timer_ = nh_.createTimer(ros::Duration(0.01), boost::bind(&AmclNode::poseReceived, this, _1));
+  // fixed_freq_pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("freq_pose", 2, true);
+  // pose_timer_ = nh_.createTimer(ros::Duration(0.01), boost::bind(&AmclNode::poseReceived, this, _1));
   //get PLICP pose
   // PLICP_sub = nh_.subscribe("/PLICP_pose", 2 , &AmclNode::PLICP_pose_received, this);
   amcl_scan_pub = nh_.advertise<sensor_msgs::LaserScan>("/amcl_scan", 1);
@@ -898,7 +898,7 @@ AmclNode::checkLaserReceived(const ros::TimerEvent& event)
   }
 }
 
-void 
+/* void 
 AmclNode::poseReceived(const ros::TimerEvent& event)
 {
   geometry_msgs::PoseWithCovarianceStamped ffp;
@@ -927,7 +927,7 @@ AmclNode::poseReceived(const ros::TimerEvent& event)
   lp.pose.pose.position.x = ffp.pose.pose.position.x;
   lp.pose.pose.position.y = ffp.pose.pose.position.y;
 }
-
+ */
 void
 AmclNode::requestMap()
 {
