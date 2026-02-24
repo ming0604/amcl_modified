@@ -200,16 +200,16 @@ class AmclNode
     void applyInitialPose();
 
     //insert PLICP particle callback
-    void PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg);
-    ros::Subscriber PLICP_sub;
+    // void PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg);
+    // ros::Subscriber PLICP_sub;
     //publish scan which is used by AMCL
     ros::Publisher amcl_scan_pub;
     //publish pose at 100HZ from tf tree
     ros::Publisher fixed_freq_pose_pub_;
     //publish generated Guassian mean pose and path;
-    ros::Publisher mean_pose_pub;
-    ros::Publisher mean_path_pub;
-    nav_msgs::Path mean_path;
+    // ros::Publisher mean_pose_pub;
+    // ros::Publisher mean_path_pub;
+    // nav_msgs::Path mean_path;
 
     //parameter for which odom to use
     std::string odom_frame_id_;
@@ -562,10 +562,10 @@ AmclNode::AmclNode() :
   fixed_freq_pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("freq_pose", 2, true);
   pose_timer_ = nh_.createTimer(ros::Duration(0.01), boost::bind(&AmclNode::poseReceived, this, _1));
   //get PLICP pose
-  PLICP_sub = nh_.subscribe("/PLICP_pose", 2 , &AmclNode::PLICP_pose_received, this);
+  // PLICP_sub = nh_.subscribe("/PLICP_pose", 2 , &AmclNode::PLICP_pose_received, this);
   amcl_scan_pub = nh_.advertise<sensor_msgs::LaserScan>("/amcl_scan", 1);
-  mean_pose_pub = nh_.advertise<geometry_msgs::PoseStamped>("/mean_pose", 2);
-  mean_path_pub = nh_.advertise<nav_msgs::Path>("/mean_path", 2);
+  // mean_pose_pub = nh_.advertise<geometry_msgs::PoseStamped>("/mean_pose", 2);
+  // mean_path_pub = nh_.advertise<nav_msgs::Path>("/mean_path", 2);
 }
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
@@ -1805,203 +1805,204 @@ void AmclNode::sample_every_45_degree(std::vector<ICP_poses>& samples, const geo
   }
 }
 
-void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg)
-{ 
-  ROS_WARN("PLICP pose received time: %f ", ros::Time::now().toSec());
-  ROS_INFO("PLICP timestamp: %f ", msg->header.stamp.toSec());
-  double PLICP_x, PLICP_y, PLICP_yaw;
-  PLICP_x = msg->pose.position.x;
-  PLICP_y = msg->pose.position.y;
 
-  tf2::Quaternion qu;
-  tf2::fromMsg(msg->pose.orientation, qu);
-  PLICP_yaw = tf2::getYaw(qu);
+// void AmclNode::PLICP_pose_received(const geometry_msgs::PoseStampedConstPtr& msg)
+// { 
+//   ROS_WARN("PLICP pose received time: %f ", ros::Time::now().toSec());
+//   ROS_INFO("PLICP timestamp: %f ", msg->header.stamp.toSec());
+//   double PLICP_x, PLICP_y, PLICP_yaw;
+//   PLICP_x = msg->pose.position.x;
+//   PLICP_y = msg->pose.position.y;
 
-  //find current particle set address
-  pf_sample_set_t *set;
-  set = pf_->sets + pf_->current_set;
+//   tf2::Quaternion qu;
+//   tf2::fromMsg(msg->pose.orientation, qu);
+//   PLICP_yaw = tf2::getYaw(qu);
 
-   /*
-  //use gmapping paper method sample around ICP result
-  if(!first_pub_pose)
-  { 
-    ROS_INFO("first_pub_pose is false");
-    std::vector<ICP_poses> samples_around_ICP;
-    double max_radius = 0.1;
-    geometry_msgs::Pose amcl_fuse_icp_pose;
+//   //find current particle set address
+//   pf_sample_set_t *set;
+//   set = pf_->sets + pf_->current_set;
+
+//    /*
+//   //use gmapping paper method sample around ICP result
+//   if(!first_pub_pose)
+//   { 
+//     ROS_INFO("first_pub_pose is false");
+//     std::vector<ICP_poses> samples_around_ICP;
+//     double max_radius = 0.1;
+//     geometry_msgs::Pose amcl_fuse_icp_pose;
     
-    //generate fused pose with x,y as amcl and yaw as ICP
-    //amcl_fuse_icp_pose.position = last_published_pose.pose.pose.position;
-    //amcl_fuse_icp_pose.orientation = msg->pose.orientation;
-    //sample_every_45_degree(samples_around_ICP,amcl_fuse_icp_pose,max_radius);
-    //use scan matching result directly
-    sample_every_45_degree(samples_around_ICP,msg->pose,max_radius);
-    ROS_INFO("sample_every_45_degree count: %zu\n", samples_around_ICP.size());
+//     //generate fused pose with x,y as amcl and yaw as ICP
+//     //amcl_fuse_icp_pose.position = last_published_pose.pose.pose.position;
+//     //amcl_fuse_icp_pose.orientation = msg->pose.orientation;
+//     //sample_every_45_degree(samples_around_ICP,amcl_fuse_icp_pose,max_radius);
+//     //use scan matching result directly
+//     sample_every_45_degree(samples_around_ICP,msg->pose,max_radius);
+//     ROS_INFO("sample_every_45_degree count: %zu\n", samples_around_ICP.size());
   
 
-    //build the guassian
-    //pf_vector_t mean = pf_vector_zero();
-    double ita = 0;
-    Eigen::Vector3d mean(0.0, 0.0, 0.0);
+//     //build the guassian
+//     //pf_vector_t mean = pf_vector_zero();
+//     double ita = 0;
+//     Eigen::Vector3d mean(0.0, 0.0, 0.0);
     
-    for(int i=0; i<samples_around_ICP.size(); i++)
-    { 
-      //AMCLLaser::LikelihoodFieldModel_one_pose has problems 
-      samples_around_ICP[i].pz = AMCLLaser::LikelihoodFieldModel_one_pose(&ldata_at_lastest_pub, samples_around_ICP[i].pose);
-      ROS_INFO("pz %d: %f" , i,samples_around_ICP[i].pz);
-      samples_around_ICP[i].pu = odom_->motion_model_odom_diff_probability(samples_around_ICP[i].pose, &last_pub_odata, amcl_last_pub_pose);
-      ROS_INFO("pu %d: %f" , i,samples_around_ICP[i].pu);
+//     for(int i=0; i<samples_around_ICP.size(); i++)
+//     { 
+//       //AMCLLaser::LikelihoodFieldModel_one_pose has problems 
+//       samples_around_ICP[i].pz = AMCLLaser::LikelihoodFieldModel_one_pose(&ldata_at_lastest_pub, samples_around_ICP[i].pose);
+//       ROS_INFO("pz %d: %f" , i,samples_around_ICP[i].pz);
+//       samples_around_ICP[i].pu = odom_->motion_model_odom_diff_probability(samples_around_ICP[i].pose, &last_pub_odata, amcl_last_pub_pose);
+//       ROS_INFO("pu %d: %f" , i,samples_around_ICP[i].pu);
       
-      //count mean
-      Eigen::Vector3d point(samples_around_ICP[i].pose.v[0], samples_around_ICP[i].pose.v[1], samples_around_ICP[i].pose.v[2]);
-      mean +=  samples_around_ICP[i].pz * samples_around_ICP[i].pu * point;
-      ita += samples_around_ICP[i].pz * samples_around_ICP[i].pu;
-    }
+//       //count mean
+//       Eigen::Vector3d point(samples_around_ICP[i].pose.v[0], samples_around_ICP[i].pose.v[1], samples_around_ICP[i].pose.v[2]);
+//       mean +=  samples_around_ICP[i].pz * samples_around_ICP[i].pu * point;
+//       ita += samples_around_ICP[i].pz * samples_around_ICP[i].pu;
+//     }
     
-    mean /= ita;
-    double pose_prob;
-    double sum=0;
-    for(int i=0; i<samples_around_ICP.size(); i++)
-    {
-      pose_prob = (samples_around_ICP[i].pz * samples_around_ICP[i].pu) / ita;
-      ROS_INFO("p_normalized %d: %f" , i,pose_prob);
-    }
-    geometry_msgs::PoseStamped mean_pose;
-    mean_pose.header.frame_id = global_frame_id_;
-    mean_pose.header.stamp = msg->header.stamp;
-    mean_pose.pose.position.x = mean(0);
-    mean_pose.pose.position.y = mean(1);
-    tf2::Quaternion q;
-    q.setRPY(0, 0, mean(2));
-    tf2::convert(q, mean_pose.pose.orientation);
-    mean_pose_pub.publish(mean_pose);
-    ROS_INFO("maen Pose: x=%f, y=%f, theta=%f\n",mean_pose.pose.position.x,mean_pose.pose.position.y,mean(2));
-    //ROS_INFO("AMCL_pose: x=%f, y=%f\n",amcl_fuse_icp_pose.position.x,amcl_fuse_icp_pose.position.y);
-    ROS_INFO("After scan matching Pose: x=%f, y=%f, theta=%f\n",msg->pose.position.x,msg->pose.position.y,PLICP_yaw);
-    //publish mean path
-    mean_path.header.frame_id = global_frame_id_;
-    mean_path.header.stamp = msg->header.stamp;
-    mean_path.poses.push_back(mean_pose);
-    mean_path_pub.publish(mean_path);
+//     mean /= ita;
+//     double pose_prob;
+//     double sum=0;
+//     for(int i=0; i<samples_around_ICP.size(); i++)
+//     {
+//       pose_prob = (samples_around_ICP[i].pz * samples_around_ICP[i].pu) / ita;
+//       ROS_INFO("p_normalized %d: %f" , i,pose_prob);
+//     }
+//     geometry_msgs::PoseStamped mean_pose;
+//     mean_pose.header.frame_id = global_frame_id_;
+//     mean_pose.header.stamp = msg->header.stamp;
+//     mean_pose.pose.position.x = mean(0);
+//     mean_pose.pose.position.y = mean(1);
+//     tf2::Quaternion q;
+//     q.setRPY(0, 0, mean(2));
+//     tf2::convert(q, mean_pose.pose.orientation);
+//     mean_pose_pub.publish(mean_pose);
+//     ROS_INFO("maen Pose: x=%f, y=%f, theta=%f\n",mean_pose.pose.position.x,mean_pose.pose.position.y,mean(2));
+//     //ROS_INFO("AMCL_pose: x=%f, y=%f\n",amcl_fuse_icp_pose.position.x,amcl_fuse_icp_pose.position.y);
+//     ROS_INFO("After scan matching Pose: x=%f, y=%f, theta=%f\n",msg->pose.position.x,msg->pose.position.y,PLICP_yaw);
+//     //publish mean path
+//     mean_path.header.frame_id = global_frame_id_;
+//     mean_path.header.stamp = msg->header.stamp;
+//     mean_path.poses.push_back(mean_pose);
+//     mean_path_pub.publish(mean_path);
     
-  }
+//   }
   
-  */
+//   */
   
 
 
-  /*
-  //fill new pose until set full
-  while(set->sample_count < pf_->max_samples)
-  {
-    //add new sample at last
-    pf_sample_t *sample;
-    sample = set->samples + set->sample_count;
-    sample->pose.v[0] = PLICP_x;
-    sample->pose.v[1] = PLICP_y;
-    sample->pose.v[2] = PLICP_yaw;
-    sample->weight = 1.0;
-    set->sample_count++;
-  }
+//   /*
+//   //fill new pose until set full
+//   while(set->sample_count < pf_->max_samples)
+//   {
+//     //add new sample at last
+//     pf_sample_t *sample;
+//     sample = set->samples + set->sample_count;
+//     sample->pose.v[0] = PLICP_x;
+//     sample->pose.v[1] = PLICP_y;
+//     sample->pose.v[2] = PLICP_yaw;
+//     sample->weight = 1.0;
+//     set->sample_count++;
+//   }
   
-  //insert a new sample at last (soft-1)
-  if(set->sample_count == pf_->max_samples)
-  {
-    //ascending sort samples
-    std::sort(set->samples, set->samples + set->sample_count, compare_samples);
+//   //insert a new sample at last (soft-1)
+//   if(set->sample_count == pf_->max_samples)
+//   {
+//     //ascending sort samples
+//     std::sort(set->samples, set->samples + set->sample_count, compare_samples);
 
-    //replace 1 particles with new pose samples
-    for(int i = 0; i < 1; i++)
-    {
-      pf_sample_t* sample = set->samples + i;
-      sample->pose.v[0] = PLICP_x;
-      sample->pose.v[1] = PLICP_y;
-      sample->pose.v[2] = PLICP_yaw;
-      sample->weight = 1.0;
-    }
-  }
-  else
-  {
-    pf_sample_t *sample;
-    sample = set->samples + set->sample_count;
-    sample->pose.v[0] = PLICP_x;
-    sample->pose.v[1] = PLICP_y;
-    sample->pose.v[2] = PLICP_yaw;
-    sample->weight = 1.0;
-    set->sample_count++;
-  }
-  */
-  /*
-  //insert a fix proportion particle (soft-p)
-  double q = 0.1;
-  int count = 0;
-  int original_N;
-  original_N = set->sample_count;
+//     //replace 1 particles with new pose samples
+//     for(int i = 0; i < 1; i++)
+//     {
+//       pf_sample_t* sample = set->samples + i;
+//       sample->pose.v[0] = PLICP_x;
+//       sample->pose.v[1] = PLICP_y;
+//       sample->pose.v[2] = PLICP_yaw;
+//       sample->weight = 1.0;
+//     }
+//   }
+//   else
+//   {
+//     pf_sample_t *sample;
+//     sample = set->samples + set->sample_count;
+//     sample->pose.v[0] = PLICP_x;
+//     sample->pose.v[1] = PLICP_y;
+//     sample->pose.v[2] = PLICP_yaw;
+//     sample->weight = 1.0;
+//     set->sample_count++;
+//   }
+//   */
+//   /*
+//   //insert a fix proportion particle (soft-p)
+//   double q = 0.1;
+//   int count = 0;
+//   int original_N;
+//   original_N = set->sample_count;
 
-  if(original_N <= (1-q)*(pf_->max_samples))
-  {
-    //insert q*original_N/(1-q) particles
-    while(count < q*original_N/(1-q))
-    {
-      //add new sample at last
-      pf_sample_t *sample;
-      sample = set->samples + set->sample_count;
-      sample->pose.v[0] = PLICP_x;
-      sample->pose.v[1] = PLICP_y;
-      sample->pose.v[2] = PLICP_yaw;
-      sample->weight = 1.0;
-      set->sample_count++;
-      count++;
-    }
-  }
+//   if(original_N <= (1-q)*(pf_->max_samples))
+//   {
+//     //insert q*original_N/(1-q) particles
+//     while(count < q*original_N/(1-q))
+//     {
+//       //add new sample at last
+//       pf_sample_t *sample;
+//       sample = set->samples + set->sample_count;
+//       sample->pose.v[0] = PLICP_x;
+//       sample->pose.v[1] = PLICP_y;
+//       sample->pose.v[2] = PLICP_yaw;
+//       sample->weight = 1.0;
+//       set->sample_count++;
+//       count++;
+//     }
+//   }
 
-  else if(original_N == pf_->max_samples)
-  { 
-    //ascending sort samples
-    std::sort(set->samples, set->samples + set->sample_count, compare_samples);
+//   else if(original_N == pf_->max_samples)
+//   { 
+//     //ascending sort samples
+//     std::sort(set->samples, set->samples + set->sample_count, compare_samples);
 
-    //replace q*Nmax particles with new pose samples
-    for(int i = 0; i < q*(pf_->max_samples); i++)
-    {
-      pf_sample_t* sample = set->samples + i;
-      sample->pose.v[0] = PLICP_x;
-      sample->pose.v[1] = PLICP_y;
-      sample->pose.v[2] = PLICP_yaw;
-      sample->weight = 1.0;
-    }
-  }
+//     //replace q*Nmax particles with new pose samples
+//     for(int i = 0; i < q*(pf_->max_samples); i++)
+//     {
+//       pf_sample_t* sample = set->samples + i;
+//       sample->pose.v[0] = PLICP_x;
+//       sample->pose.v[1] = PLICP_y;
+//       sample->pose.v[2] = PLICP_yaw;
+//       sample->weight = 1.0;
+//     }
+//   }
 
-  else
-  {
-    //ascending sort samples
-    std::sort(set->samples, set->samples + set->sample_count, compare_samples);
+//   else
+//   {
+//     //ascending sort samples
+//     std::sort(set->samples, set->samples + set->sample_count, compare_samples);
 
-    //replace original_N-(1-q)*Nmax particles with new pose samples
-    for(int i = 0; i < (original_N-(1-q)*(pf_->max_samples)); i++)
-    {
-      pf_sample_t* sample = set->samples + i;
-      sample->pose.v[0] = PLICP_x;
-      sample->pose.v[1] = PLICP_y;
-      sample->pose.v[2] = PLICP_yaw;
-      sample->weight = 1.0;
-      count++;
-    }
+//     //replace original_N-(1-q)*Nmax particles with new pose samples
+//     for(int i = 0; i < (original_N-(1-q)*(pf_->max_samples)); i++)
+//     {
+//       pf_sample_t* sample = set->samples + i;
+//       sample->pose.v[0] = PLICP_x;
+//       sample->pose.v[1] = PLICP_y;
+//       sample->pose.v[2] = PLICP_yaw;
+//       sample->weight = 1.0;
+//       count++;
+//     }
 
-    //insert q*Nmax new pose samples 
-    while(count < q*(pf_->max_samples))
-    {
-      //add new sample at last
-      pf_sample_t *sample;
-      sample = set->samples + set->sample_count;
-      sample->pose.v[0] = PLICP_x;
-      sample->pose.v[1] = PLICP_y;
-      sample->pose.v[2] = PLICP_yaw;
-      sample->weight = 1.0;
-      set->sample_count++;
-      count++;
-    }
+//     //insert q*Nmax new pose samples 
+//     while(count < q*(pf_->max_samples))
+//     {
+//       //add new sample at last
+//       pf_sample_t *sample;
+//       sample = set->samples + set->sample_count;
+//       sample->pose.v[0] = PLICP_x;
+//       sample->pose.v[1] = PLICP_y;
+//       sample->pose.v[2] = PLICP_yaw;
+//       sample->weight = 1.0;
+//       set->sample_count++;
+//       count++;
+//     }
     
-  }
+//   }
   
-  */
-}
+//   */
+// }
